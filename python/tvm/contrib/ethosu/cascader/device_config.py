@@ -173,22 +173,26 @@ class EthosuDeviceConfig:
         bw_limit = 0
         if op_type == "ethosu_pooling" and op_str == "MAX":
             cycles = self._output_cycles[0]
-        elif op_type in ("ethosu_pooling", "ethosu_conv2d", "ethosu_depthwise_conv2d"):
+        elif op_type in {
+            "ethosu_pooling",
+            "ethosu_conv2d",
+            "ethosu_depthwise_conv2d",
+        }:
             cycles = self._output_cycles[1] if ifm_dtype == "int8" else self._output_cycles[2]
         elif op_type == "ethosu_binary_elementwise":
             # Binary Bandwidth Limitations
-            if ifm_dtype == "int8":
-                bw_limit = 0.125 if ofm_dtype == "int8" else 0.75
-            elif ifm_dtype == "int16":
+            if ifm_dtype == "int16":
                 bw_limit = 0.75 if ofm_dtype == "int16" else 1
+            elif ifm_dtype == "int8":
+                bw_limit = 0.125 if ofm_dtype == "int8" else 0.75
             else:
                 bw_limit = 1.5
 
-            if op_str in ("MIN", "MAX"):
+            if op_str in {"MIN", "MAX"}:
                 cycles = self._output_cycles[1]
             elif op_str == "MUL":
                 cycles = self._output_cycles[2]
-            if op_str in ("ADD", "SUB"):
+            if op_str in {"ADD", "SUB"}:
                 if ofm_dtype == "int32":
                     cycles = (
                         self._output_cycles[2] if ifm_dtype == "int32" else self._output_cycles[3]
@@ -205,9 +209,9 @@ class EthosuDeviceConfig:
 
             if op_str == "CLZ":
                 cycles = self._output_cycles[1]
-            elif op_str in ("SHL", "SHR"):
+            elif op_str in {"SHL", "SHR"}:
                 cycles = self._output_cycles[2]
-            elif op_str in ("LRELU", "ABS"):
+            elif op_str in {"LRELU", "ABS"}:
                 cycles = self._output_cycles[1]
                 if ifm_dtype == "int16":
                     bw_limit = 0.5
@@ -215,7 +219,7 @@ class EthosuDeviceConfig:
         act_cycles = 0
         if activation == "CLIP":
             act_cycles = self._activation_cycles[0]
-        elif activation in ("LUT", "TANH", "SIGMOID"):
+        elif activation in {"LUT", "TANH", "SIGMOID"}:
             act_cycles = self._activation_cycles[1]
 
         return max((cycles / self._output_units), act_cycles, bw_limit)
@@ -239,12 +243,8 @@ class EthosuDeviceConfig:
         int
             The amount of delay cycles
         """
-        if op_type in ("ethosu_conv2d", "ethosu_depthwise2d", "ethosu_pooling"):
-            if ifm_dtype == "int16":
-                return self._delay_cycles[1]
-
-            return self._delay_cycles[0]
-
+        if op_type in {"ethosu_conv2d", "ethosu_depthwise2d", "ethosu_pooling"}:
+            return self._delay_cycles[1] if ifm_dtype == "int16" else self._delay_cycles[0]
         return 0
 
     def _get_weight_decoder_cycles(self, op_type: str) -> int:
@@ -261,7 +261,7 @@ class EthosuDeviceConfig:
         int
             Estimated cycles for weight decoding
         """
-        if op_type in ("ethosu_conv2d", "ethosu_depthwise2d"):
+        if op_type in {"ethosu_conv2d", "ethosu_depthwise2d"}:
             return 32 * self._micro_block.depth // 8
 
         return 0
@@ -328,13 +328,15 @@ class EthosuDeviceConfig:
         )
 
         if op_type == "ethosu_conv2d":
-            if dtype == "int8":
-                if partkernel:
-                    depth = self._align(min(32, input_shape.depth), 8)
-                else:
-                    depth = self._align(min(16, input_shape.depth), 8)
-            elif dtype == "int16":
+            if dtype == "int16":
                 depth = self._align(min(16, input_shape.depth), 4)
+            elif dtype == "int8":
+                depth = (
+                    self._align(min(32, input_shape.depth), 8)
+                    if partkernel
+                    else self._align(min(16, input_shape.depth), 8)
+                )
+
             else:
                 depth = self._align(min(8, input_shape.depth), 2)
         else:
@@ -413,16 +415,11 @@ class EthosuDeviceConfig:
 
         subkernels = []
         for y in subkernels_y:
-            for x in subkernels_x:
-                subkernels.append((y, x))
-
+            subkernels.extend((y, x) for x in subkernels_x)
         return subkernels
 
     def _get_accumulator_width(self, op_type: str, ifm_dtype: str):
-        if ifm_dtype == "int16" and op_type != "ethosu_pooling":
-            return 5
-
-        return 4
+        return 5 if ifm_dtype == "int16" and op_type != "ethosu_pooling" else 4
 
     def is_partkernel(
         self, op_type: str, ifm_channels: int, ifm_dtype: str, kernel_elements: int
@@ -566,14 +563,13 @@ class EthosuDeviceConfig:
         # Split the block in half until it fits into SHRAM
         max_height, max_width, max_depth = self._max_block_shape.as_list()[1:]
         if output_layout == "NHCWB16":
-            output_height = output_shape[1]
             output_width = output_shape[3]
             output_channels = output_shape[2] * 16
         else:
-            output_height = output_shape[1]
             output_width = output_shape[2]
             output_channels = output_shape[3]
 
+        output_height = output_shape[1]
         output_nhwc_block = [
             1,
             _round_up(min(output_height, max_height), self._micro_block.height),
@@ -581,7 +577,7 @@ class EthosuDeviceConfig:
             _round_up(min(output_channels, max_depth), self._micro_block.depth),
         ]
         output_block = self._create_layout_block(output_nhwc_block, output_layout)
-        split_order = (a for a in [1, 2, 3])
+        split_order = iter([1, 2, 3])
         split_axis = next(split_order)
 
         offset = [0] * len(output_block)
@@ -643,19 +639,21 @@ class EthosuDeviceConfig:
         transform = ifm_propagator.transform
 
         if op_type != "ethosu_identity":
+            transform[1][-1] = min(transform[1][-1], self._subkernel_limits[0] - stride_h)
             if input_layout == "NHCWB16":
-                transform[1][-1] = min(transform[1][-1], self._subkernel_limits[0] - stride_h)
                 transform[3][-1] = min(transform[3][-1], self._subkernel_limits[1] - stride_w)
             else:
-                transform[1][-1] = min(transform[1][-1], self._subkernel_limits[0] - stride_h)
                 transform[2][-1] = min(transform[2][-1], self._subkernel_limits[1] - stride_w)
 
-            if op_type in ("ethosu_pooling", "ethosu_depthwise_conv2d"):
-                if output_layout == "NHCWB16" and input_layout == "NHWC":
-                    transform[3][-1] = depth
-                elif output_layout == "NHCWB16" and input_layout == "NHCWB16":
+            if (
+                op_type in ("ethosu_pooling", "ethosu_depthwise_conv2d")
+                and output_layout == "NHCWB16"
+            ):
+                if input_layout == "NHCWB16":
                     transform[2][-1] = 1 + ((depth - 1) // 16)
 
+                elif input_layout == "NHWC":
+                    transform[3][-1] = depth
         return Propagator(transform, ifm_propagator.offset)
 
     def get_valid_block_configs(
@@ -831,15 +829,10 @@ class EthosuDeviceConfig:
                             # Block culling disabled - add all block configs that fit
                             valid_block_configs.append(block_config)
                         else:
-                            # Add block config only if it's not dominated by an existing block.
-                            # A block config is dominated by another if its output_shape is greater
-                            # or equal in every dimension and strictly greater in at least one
-                            # dimension.
-                            dominated = False
-                            for valid_block in valid_block_configs:
-                                if block_config < valid_block:
-                                    dominated = True
-                                    break
+                            dominated = any(
+                                block_config < valid_block
+                                for valid_block in valid_block_configs
+                            )
 
                             if not dominated:
                                 valid_block_configs.append(block_config)

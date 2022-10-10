@@ -32,8 +32,7 @@ def build_mlp(data, weight):
         gv1 = bb.emit_te(topi.nn.relu, gv0)
         bb.emit_func_output(gv1)
 
-    mod = bb.get()
-    return mod
+    return bb.get()
 
 
 if __name__ == "__main__":

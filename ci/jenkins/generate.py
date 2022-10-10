@@ -84,9 +84,7 @@ if __name__ == "__main__":
     parser.add_argument("--check", action="store_true", help="just verify the output didn't change")
     args = parser.parse_args()
 
-    with open(JENKINSFILE) as f:
-        content = f.read()
-
+    content = Path(JENKINSFILE).read_text()
     data["generated_time"] = datetime.datetime.now().isoformat()
 
     environment = jinja2.Environment(

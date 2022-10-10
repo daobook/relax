@@ -122,30 +122,31 @@ class PopenWorker:
         ----
         The worker can start a new process when send is called again.
         """
-        if self._proc is not None:
-            # allow gracefully shutdown
-            try:
-                self._writer.close()
-            except IOError:
-                pass
-            try:
-                self._reader.close()
-            except IOError:
-                pass
-            # kill all child processes recursively
-            try:
-                kill_child_processes(self._proc.pid)
-            except TypeError:
-                pass
-            try:
-                self._proc.kill()
-            except OSError:
-                pass
+        if self._proc is None:
+            return
+        # allow gracefully shutdown
+        try:
+            self._writer.close()
+        except IOError:
+            pass
+        try:
+            self._reader.close()
+        except IOError:
+            pass
+        # kill all child processes recursively
+        try:
+            kill_child_processes(self._proc.pid)
+        except TypeError:
+            pass
+        try:
+            self._proc.kill()
+        except OSError:
+            pass
 
-            # Join the child process to avoid zombie processes
-            self.join(timeout=1.0)
-            self._proc = None
-            self._remaining_uses = None
+        # Join the child process to avoid zombie processes
+        self.join(timeout=1.0)
+        self._proc = None
+        self._remaining_uses = None
 
     def _start(self):
         """Start a new subprocess if nothing is available"""
@@ -194,9 +195,7 @@ class PopenWorker:
 
     def is_alive(self):
         """Check if the process is alive"""
-        if self._proc:
-            return self._proc.poll() is None
-        return False
+        return self._proc.poll() is None if self._proc else False
 
     def send(self, fn, args=(), kwargs=None, timeout=None):
         """Send a new function task fn(*args, **kwargs) to the subprocess.
@@ -238,7 +237,7 @@ class PopenWorker:
 
             # N.B. The initializer doesn't count as a "use"
             self._remaining_uses = self._maximum_uses
-        kwargs = {} if not kwargs else kwargs
+        kwargs = kwargs or {}
         data = cloudpickle.dumps((fn, args, kwargs, timeout), protocol=pickle.HIGHEST_PROTOCOL)
         try:
             self._writer.write(struct.pack("<i", len(data)))
