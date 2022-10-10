@@ -201,7 +201,7 @@ class ApplyFixedConfig(DispatchContext):
         elif isinstance(schedule_names, list):
             self._schedule_names = schedule_names
         else:
-            raise RuntimeError("Incorrect type: " + schedule_names)
+            raise RuntimeError(f"Incorrect type: {schedule_names}")
         self._tasks = tasks
         self.workload = None
 
@@ -217,13 +217,11 @@ class ApplyFixedConfig(DispatchContext):
 
         if not config:
             raise RuntimeError(
-                "workload: %s does not exist in %s" % (str(workload), str(self._tasks))
+                f"workload: {str(workload)} does not exist in {str(self._tasks)}"
             )
+
         # Add low cost to the target schedule and high cost to others.
-        if workload[0] in self._schedule_names:
-            config.cost = 1e-6
-        else:
-            config.cost = 100000
+        config.cost = 1e-6 if workload[0] in self._schedule_names else 100000
         return config
 
     def update(self, target, workload, cfg):
@@ -284,9 +282,8 @@ class ApplyHistoryBest(DispatchContext):
             if isinstance(rec, str):
                 rec = load_from_file(rec)
                 joint_records += rec
-            else:
-                if rec is not None:
-                    joint_records.append(rec)
+            elif rec is not None:
+                joint_records.append(rec)
 
         if not joint_records:
             return
@@ -312,14 +309,13 @@ class ApplyHistoryBest(DispatchContext):
 
             # use model as key to build best map
             key = (inp.target.model, inp.task.workload)
-            if key not in best_by_model:
-                if inp.target.model != "unknown":
-                    best_by_model[key] = (inp, res)
-            else:
+            if key in best_by_model:
                 _, other_res = best_by_model[key]
                 if np.mean(other_res.costs) > np.mean(res.costs):
                     best_by_model[key] = (inp, res)
 
+            elif inp.target.model != "unknown":
+                best_by_model[key] = (inp, res)
         logger.debug("Finish loading %d records", counter)
 
     def _query_inside(self, target, workload):

@@ -67,7 +67,7 @@ CMAKELIST_FILENAME = "CMakeLists.txt"
 # We only check two levels of the version.
 ZEPHYR_VERSION = 2.7
 
-WEST_CMD = default = sys.executable + " -m west" if sys.executable else None
+WEST_CMD = default = f"{sys.executable} -m west" if sys.executable else None
 
 ZEPHYR_BASE = os.getenv("ZEPHYR_BASE")
 
@@ -206,13 +206,14 @@ def generic_find_serial_port(serial_number=None):
 
     serial_ports = list(serial.tools.list_ports.grep(regex))
 
-    if len(serial_ports) == 0:
+    if not serial_ports:
         raise Exception(f"No serial port found for board {prop['board']}!")
 
     if len(serial_ports) != 1:
-        ports_lst = ""
-        for port in serial_ports:
-            ports_lst += f"Serial port: {port.device}, serial number: {port.serial_number}\n"
+        ports_lst = "".join(
+            f"Serial port: {port.device}, serial number: {port.serial_number}\n"
+            for port in serial_ports
+        )
 
         raise Exception("Expected 1 serial port, found multiple ports:\n {ports_lst}")
 
@@ -244,18 +245,14 @@ def _get_nrf_device_args(options):
 
         return ["--snr", options["nrfjprog_snr"]]
 
-    if not boards:
-        return []
-
-    return ["--snr", boards[0]]
+    return ["--snr", boards[0]] if boards else []
 
 
 PROJECT_TYPES = []
 if IS_TEMPLATE:
-    for d in (API_SERVER_DIR / "src").iterdir():
-        if d.is_dir():
-            PROJECT_TYPES.append(d.name)
-
+    PROJECT_TYPES.extend(
+        d.name for d in (API_SERVER_DIR / "src").iterdir() if d.is_dir()
+    )
 
 PROJECT_OPTIONS = [
     server.ProjectOption(
@@ -266,7 +263,9 @@ PROJECT_OPTIONS = [
     ),
     server.ProjectOption(
         "gdbserver_port",
-        help=("If given, port number to use when running the local gdbserver."),
+        help=(
+            "If given, port number to use when running the local gdbserver."
+        ),
         optional=["open_transport"],
         type="int",
     ),
@@ -274,13 +273,17 @@ PROJECT_OPTIONS = [
         "nrfjprog_snr",
         optional=["open_transport"],
         type="int",
-        help=("When used with nRF targets, serial # of the attached board to use, from nrfjprog."),
+        help=(
+            "When used with nRF targets, serial # of the attached board to use, from nrfjprog."
+        ),
     ),
     server.ProjectOption(
         "openocd_serial",
         optional=["open_transport"],
         type="int",
-        help=("When used with OpenOCD targets, serial # of the attached board to use."),
+        help=(
+            "When used with OpenOCD targets, serial # of the attached board to use."
+        ),
     ),
     server.ProjectOption(
         "project_type",
@@ -307,8 +310,14 @@ PROJECT_OPTIONS = [
     ),
     server.ProjectOption(
         "zephyr_base",
-        required=(["generate_project", "open_transport"] if not ZEPHYR_BASE else None),
-        optional=(["generate_project", "open_transport"] if ZEPHYR_BASE else ["build"]),
+        required=None
+        if ZEPHYR_BASE
+        else ["generate_project", "open_transport"],
+        optional=(
+            ["generate_project", "open_transport"]
+            if ZEPHYR_BASE
+            else ["build"]
+        ),
         default=ZEPHYR_BASE,
         type="str",
         help="Path to the zephyr base directory.",
@@ -702,7 +711,7 @@ class ZephyrSerialTransport:
 
         nrf_board = usb.core.find(idVendor=cls.NRF5340_VENDOR_ID)
 
-        if nrf_board == None:
+        if nrf_board is None:
             raise Exception("_find_nrf_serial_port: unable to find NRF5340DK")
 
         if nrf_board.idProduct in cls.NRF5340_DK_BOARD_VCOM_BY_PRODUCT_ID:
@@ -762,11 +771,10 @@ class ZephyrSerialTransport:
 
     def read(self, n, timeout_sec):
         self._port.timeout = timeout_sec
-        to_return = self._port.read(n)
-        if not to_return:
+        if to_return := self._port.read(n):
+            return to_return
+        else:
             raise server.IoTimeoutError()
-
-        return to_return
 
     def write(self, data, timeout_sec):
         self._port.write_timeout = timeout_sec

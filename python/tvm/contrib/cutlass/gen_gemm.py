@@ -181,8 +181,9 @@ class CutlassGemmProfiler:
 
         if arg0_dtype == "float32":
             default_kernel_name = (
-                default_kernel_name[0] if not use_3xtf32 else default_kernel_name[1]
+                default_kernel_name[1] if use_3xtf32 else default_kernel_name[0]
             )
+
 
         filtered = list(filter(lambda op: op["name"] == default_kernel_name, ops))
         assert len(filtered) == 1
@@ -228,12 +229,12 @@ class CutlassGemmProfiler:
             arg0_dtype,
             arg1_dtype,
             enumerate_gemm_operators,
-            lambda align: all([dim % align == 0 for dim in [M, N, K]]),
+            lambda align: all(dim % align == 0 for dim in [M, N, K]),
             use_3xtf32,
             profile_all_alignments=profile_all_alignments,
-            # TODO(masahi): Invesitigate when fp32 accumulation is needed for gemm
             accumlator_dtype=out_dtype,
         )
+
 
         if not find_first_valid:
             self.engine.compile_all(ops, use_multiprocessing)

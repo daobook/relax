@@ -178,7 +178,7 @@ class TestGenerateProject:
         # Test we checked version then called upload
         assert mock_run.call_count == 2
         assert mock_run.call_args_list[0][0] == (["arduino-cli", "version"],)
-        assert mock_run.call_args_list[1][0][0][0:2] == ["arduino-cli", "upload"]
+        assert mock_run.call_args_list[1][0][0][:2] == ["arduino-cli", "upload"]
         mock_run.reset_mock()
 
         # Test exception raised when `arduino-cli upload` returns error code
@@ -188,4 +188,4 @@ class TestGenerateProject:
 
         # Version information should be cached and not checked again
         mock_run.assert_called_once()
-        assert mock_run.call_args[0][0][0:2] == ["arduino-cli", "upload"]
+        assert mock_run.call_args[0][0][:2] == ["arduino-cli", "upload"]
